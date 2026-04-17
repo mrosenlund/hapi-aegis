@@ -287,6 +287,94 @@ describe('contentSecurityPolicy middleware', () => {
         });
     });
 
+    describe('unit — string value normalization', () => {
+
+        it('treats a bare string as a single-element array', () => {
+
+            const result = Csp({ useDefaults: false, directives: { defaultSrc: "'self'" } });
+            expect(result.value).to.equal("default-src 'self'");
+        });
+
+        it('produces identical output for string and single-element-array inputs', () => {
+
+            const fromString = Csp({ useDefaults: false, directives: { scriptSrc: "'self'" } });
+            const fromArray = Csp({ useDefaults: false, directives: { scriptSrc: ["'self'"] } });
+            expect(fromString).to.equal(fromArray);
+        });
+
+        it('does not warn for a bare-string normalization (quiet ergonomic convenience)', () => {
+
+            const warnings = captureWarnings(() => Csp({ useDefaults: false, directives: { scriptSrc: "'self'" } }));
+            expect(warnings).to.have.length(0);
+        });
+    });
+
+    describe('unit — null / undefined directive skip', () => {
+
+        const directiveNames = (value) => value.split('; ').map((part) => part.split(' ')[0]);
+
+        it('drops a default directive when the user passes null for its key', () => {
+
+            const result = Csp({ directives: { scriptSrc: null } });
+            const names = directiveNames(result.value);
+            expect(names).to.not.contain('script-src');
+            expect(names).to.contain('script-src-attr'); // only scriptSrc dropped, others intact
+            expect(names).to.contain('default-src');
+        });
+
+        it('drops a default directive when the user passes undefined for its key', () => {
+
+            const result = Csp({ directives: { scriptSrc: undefined } });
+            const names = directiveNames(result.value);
+            expect(names).to.not.contain('script-src');
+            expect(names).to.contain('script-src-attr');
+        });
+
+        it('null skip does not affect other directives', () => {
+
+            const result = Csp({ directives: { scriptSrc: null } });
+            // verify every other default is still present
+            expect(result.value).to.contain("default-src 'self'");
+            expect(result.value).to.contain("base-uri 'self'");
+            expect(result.value).to.contain("font-src 'self' https: data:");
+            expect(result.value).to.contain("form-action 'self'");
+            expect(result.value).to.contain("frame-ancestors 'self'");
+            expect(result.value).to.contain("img-src 'self' data:");
+            expect(result.value).to.contain("object-src 'none'");
+            expect(result.value).to.contain("script-src-attr 'none'");
+            expect(result.value).to.contain("style-src 'self' https: 'unsafe-inline'");
+            expect(result.value).to.contain('upgrade-insecure-requests');
+        });
+    });
+
+    describe('unit — deduplication', () => {
+
+        it('emits only one entry when the same directive arrives under two key casings', () => {
+
+            const result = Csp({
+                useDefaults: false,
+                directives: {
+                    defaultSrc: ["'self'"],
+                    'default-src': ['cdn.example.com']
+                }
+            });
+            const occurrences = result.value.split('default-src').length - 1;
+            expect(occurrences).to.equal(1);
+        });
+
+        it('first occurrence wins on a camelCase + kebab collision', () => {
+
+            const result = Csp({
+                useDefaults: false,
+                directives: {
+                    defaultSrc: ["'self'"],
+                    'default-src': ['cdn.example.com']
+                }
+            });
+            expect(result.value).to.equal("default-src 'self'");
+        });
+    });
+
     describe('integration', () => {
 
         it('sets the default Content-Security-Policy header on 200 responses', async () => {
