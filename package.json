@@ -1,0 +1,39 @@
+{
+  "name": "hapi-aegis",
+  "version": "1.0.0",
+  "description": "A Hapi.js plugin that sets security-related HTTP response headers.",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "lab -c -t 95",
+    "lint": "eslint lib test"
+  },
+  "keywords": [
+    "hapi",
+    "plugin",
+    "security",
+    "headers",
+    "helmet"
+  ],
+  "author": "Matt Rosenlund <matt.rosenlund@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mrosenlund/hapi-aegis.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mrosenlund/hapi-aegis/issues"
+  },
+  "homepage": "https://github.com/mrosenlund/hapi-aegis#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "@hapi/hapi": ">=21"
+  },
+  "devDependencies": {
+    "@hapi/code": "^9.0.3",
+    "@hapi/hapi": "^21.3.12",
+    "@hapi/lab": "^25.3.2",
+    "eslint": "^8.57.1"
+  }
+}
