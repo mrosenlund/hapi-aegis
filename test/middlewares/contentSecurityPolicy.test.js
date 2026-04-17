@@ -9,6 +9,20 @@ const Csp = require('../../lib/middlewares/contentSecurityPolicy');
 
 const { describe, it } = exports.lab = Lab.script();
 
+const captureWarnings = (fn) => {
+
+    const original = console.warn;
+    const warnings = [];
+    console.warn = (msg) => warnings.push(msg);
+    try {
+        fn();
+    }
+    finally {
+        console.warn = original;
+    }
+    return warnings;
+};
+
 const DEFAULT_VALUE = [
     "default-src 'self'",
     "base-uri 'self'",
@@ -184,6 +198,92 @@ describe('contentSecurityPolicy middleware', () => {
                 }
             });
             expect(result.value).to.equal("sandbox; default-src 'self'");
+        });
+    });
+
+    describe('unit — unknown-directive warning', () => {
+
+        it('warns when a user directive is not on the known list', () => {
+
+            const warnings = captureWarnings(() => Csp({ directives: { fooSrc: ["'self'"] } }));
+            expect(warnings).to.have.length(1);
+            expect(warnings[0]).to.equal('hapi-aegis: unknown CSP directive "foo-src"');
+        });
+
+        it('still includes the unknown directive in the header', () => {
+
+            let result;
+            captureWarnings(() => {
+
+                result = Csp({ useDefaults: false, directives: { fooSrc: ["'self'"] } });
+            });
+            expect(result.value).to.equal("foo-src 'self'");
+        });
+
+        it('warns once per unknown directive across multiple unknowns', () => {
+
+            const warnings = captureWarnings(() => Csp({
+                useDefaults: false,
+                directives: { fooSrc: ["'self'"], barSrc: ["'self'"] }
+            }));
+            expect(warnings).to.have.length(2);
+            expect(warnings[0]).to.contain('foo-src');
+            expect(warnings[1]).to.contain('bar-src');
+        });
+
+        it('does not warn when only default directives are in play', () => {
+
+            const warnings = captureWarnings(() => Csp());
+            expect(warnings).to.have.length(0);
+        });
+    });
+
+    describe('unit — unquoted-keyword warning', () => {
+
+        it('warns on bare "self"', () => {
+
+            const warnings = captureWarnings(() => Csp({ useDefaults: false, directives: { scriptSrc: ['self'] } }));
+            expect(warnings).to.have.length(1);
+            expect(warnings[0]).to.equal('hapi-aegis: CSP directive "script-src" has value "self" without quotes; did you mean "\'self\'"?');
+        });
+
+        it('warns on bare "none"', () => {
+
+            const warnings = captureWarnings(() => Csp({ useDefaults: false, directives: { objectSrc: ['none'] } }));
+            expect(warnings).to.have.length(1);
+            expect(warnings[0]).to.contain('"none"');
+        });
+
+        it('warns on bare "unsafe-inline"', () => {
+
+            const warnings = captureWarnings(() => Csp({ useDefaults: false, directives: { styleSrc: ['unsafe-inline'] } }));
+            expect(warnings).to.have.length(1);
+            expect(warnings[0]).to.contain('"unsafe-inline"');
+        });
+
+        it('does not warn when keywords are properly quoted', () => {
+
+            const warnings = captureWarnings(() => Csp({ useDefaults: false, directives: { scriptSrc: ["'self'", "'unsafe-inline'"] } }));
+            expect(warnings).to.have.length(0);
+        });
+
+        it('warns once in a mixed array that has both quoted and bare keywords', () => {
+
+            const warnings = captureWarnings(() => Csp({ useDefaults: false, directives: { scriptSrc: ["'self'", 'unsafe-inline'] } }));
+            expect(warnings).to.have.length(1);
+            expect(warnings[0]).to.contain('"unsafe-inline"');
+        });
+
+        it('does not warn on scheme-only values like https: and data:', () => {
+
+            const warnings = captureWarnings(() => Csp({ useDefaults: false, directives: { imgSrc: ['https:', 'data:'] } }));
+            expect(warnings).to.have.length(0);
+        });
+
+        it('does not warn on the default policy', () => {
+
+            const warnings = captureWarnings(() => Csp());
+            expect(warnings).to.have.length(0);
         });
     });
 
