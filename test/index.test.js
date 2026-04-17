@@ -16,7 +16,7 @@ const MIDDLEWARES_DIR = Path.join(__dirname, '..', 'lib', 'middlewares');
 
 const makeSetter = (name, header, defaultValue) => ({
     name,
-    build(options) {
+    run(options) {
 
         const value = (options && options.value) || defaultValue;
         return { header, value };
@@ -25,15 +25,23 @@ const makeSetter = (name, header, defaultValue) => ({
 
 const makeRemover = (name, header) => ({
     name,
-    build() {
+    run() {
 
         return { action: 'remove', header };
     }
 });
 
+const makeArrayRemover = (name, headers) => ({
+    name,
+    run() {
+
+        return headers.map((h) => ({ action: 'remove', header: h }));
+    }
+});
+
 const makeNoop = (name) => ({
     name,
-    build() {
+    run() {
 
         return null;
     }
@@ -41,7 +49,7 @@ const makeNoop = (name) => ({
 
 const makeEmptyReturn = (name) => ({
     name,
-    build() {
+    run() {
 
         return {};
     }
@@ -214,7 +222,7 @@ describe('hapi-aegis plugin shell', () => {
         expect(onRes.headers['x-test-setter']).to.equal('default-value');
     });
 
-    it('tolerates middleware build() returning null or a resultless object', async () => {
+    it('tolerates middleware returning null or a resultless object', async () => {
 
         const server = Hapi.server();
         await registerWith(server, [
@@ -225,6 +233,24 @@ describe('hapi-aegis plugin shell', () => {
         server.route({ method: 'GET', path: '/', handler: () => 'ok' });
         const res = await server.inject('/');
         expect(res.statusCode).to.equal(200);
+    });
+
+    it('applies each entry when a middleware returns an array of results', async () => {
+
+        const server = Hapi.server();
+        await registerWith(server, [makeArrayRemover('testMulti', ['X-Alpha', 'X-Beta'])]);
+
+        server.route({
+            method: 'GET',
+            path: '/',
+            handler: (request, h) => h.response('ok')
+                .header('X-Alpha', 'a')
+                .header('X-Beta', 'b')
+        });
+
+        const res = await server.inject('/');
+        expect(res.headers['x-alpha']).to.not.exist();
+        expect(res.headers['x-beta']).to.not.exist();
     });
 
     it('reports plugin version from package.json', () => {
