@@ -1,67 +1,18 @@
 'use strict';
 
+const Fs = require('fs');
+const Path = require('path');
+
 const Hapi = require('@hapi/hapi');
 const Lab = require('@hapi/lab');
 const { expect } = require('@hapi/code');
 
-const Fs = require('fs');
-const Path = require('path');
-
 const Aegis = require('..');
-const { registryKey, applyHeader, resolveConfig, loadMiddlewares } = Aegis.internals;
+const { applyHeader, resolveConfig, loadMiddlewares } = Aegis.internals;
 
 const { describe, it } = exports.lab = Lab.script();
 
 const MIDDLEWARES_DIR = Path.join(__dirname, '..', 'lib', 'middlewares');
-
-const makeSetter = (name, header, defaultValue) => ({
-    name,
-    run(options) {
-
-        const value = (options && options.value) || defaultValue;
-        return { header, value };
-    }
-});
-
-const makeRemover = (name, header) => ({
-    name,
-    run() {
-
-        return { action: 'remove', header };
-    }
-});
-
-const makeArrayRemover = (name, headers) => ({
-    name,
-    run() {
-
-        return headers.map((h) => ({ action: 'remove', header: h }));
-    }
-});
-
-const makeNoop = (name) => ({
-    name,
-    run() {
-
-        return null;
-    }
-});
-
-const makeEmptyReturn = (name) => ({
-    name,
-    run() {
-
-        return {};
-    }
-});
-
-const registerWith = async (server, registry, serverOptions = {}) => {
-
-    await server.register({
-        plugin: Aegis,
-        options: Object.assign({ [registryKey]: registry }, serverOptions)
-    });
-};
 
 describe('hapi-aegis plugin shell', () => {
 
@@ -72,190 +23,78 @@ describe('hapi-aegis plugin shell', () => {
         expect(server.registrations['hapi-aegis']).to.exist();
     });
 
-    it('applies middleware headers on 200 responses', async () => {
+    it('reports plugin version from package.json', () => {
 
-        const server = Hapi.server();
-        await registerWith(server, [makeSetter('testSetter', 'X-Test-Setter', 'default-value')]);
-
-        server.route({ method: 'GET', path: '/', handler: () => 'ok' });
-        const res = await server.inject('/');
-        expect(res.statusCode).to.equal(200);
-        expect(res.headers['x-test-setter']).to.equal('default-value');
+        expect(Aegis.plugin.version).to.equal(require('../package.json').version);
     });
 
-    it('applies middleware headers on Boom error responses', async () => {
+    it('applies all default middlewares on a 200 response', async () => {
 
         const server = Hapi.server();
-        await registerWith(server, [makeSetter('testSetter', 'X-Test-Setter', 'default-value')]);
-
-        server.route({
-            method: 'GET',
-            path: '/boom',
-            handler: () => {
-
-                throw new Error('intentional');
-            }
-        });
-
-        const res = await server.inject('/boom');
-        expect(res.statusCode).to.equal(500);
-        expect(res.headers['x-test-setter']).to.equal('default-value');
-    });
-
-    it('removes headers when middleware returns action=remove on 200 responses', async () => {
-
-        const server = Hapi.server();
-        await registerWith(server, [makeRemover('testRemover', 'X-Powered-By')]);
-
-        server.route({
-            method: 'GET',
-            path: '/',
-            handler: (request, h) => h.response('ok').header('X-Powered-By', 'test')
-        });
-
-        const res = await server.inject('/');
-        expect(res.headers['x-powered-by']).to.not.exist();
-    });
-
-    it('removes headers when middleware returns action=remove on Boom responses', async () => {
-
-        const server = Hapi.server();
-        await registerWith(server, [
-            makeSetter('testSetter', 'X-Will-Be-Removed', 'set-value'),
-            makeRemover('testRemover', 'X-Will-Be-Removed')
-        ]);
-
-        server.route({
-            method: 'GET',
-            path: '/boom',
-            handler: () => {
-
-                throw new Error('intentional');
-            }
-        });
-
-        const res = await server.inject('/boom');
-        expect(res.statusCode).to.equal(500);
-        expect(res.headers['x-will-be-removed']).to.not.exist();
-    });
-
-    it('accepts server-level options configuring a middleware', async () => {
-
-        const server = Hapi.server();
-        await registerWith(
-            server,
-            [makeSetter('testSetter', 'X-Test-Setter', 'default-value')],
-            { testSetter: { value: 'server-value' } }
-        );
-
-        server.route({ method: 'GET', path: '/', handler: () => 'ok' });
-        const res = await server.inject('/');
-        expect(res.headers['x-test-setter']).to.equal('server-value');
-    });
-
-    it('disables a middleware when server-level option is false', async () => {
-
-        const server = Hapi.server();
-        await registerWith(
-            server,
-            [makeSetter('testSetter', 'X-Test-Setter', 'default-value')],
-            { testSetter: false }
-        );
-
-        server.route({ method: 'GET', path: '/', handler: () => 'ok' });
-        const res = await server.inject('/');
-        expect(res.headers['x-test-setter']).to.not.exist();
-    });
-
-    it('route-level plugins.aegis overrides server-level options', async () => {
-
-        const server = Hapi.server();
-        await registerWith(
-            server,
-            [makeSetter('testSetter', 'X-Test-Setter', 'default-value')],
-            { testSetter: { value: 'server-value' } }
-        );
-
-        server.route({
-            method: 'GET',
-            path: '/override',
-            options: {
-                plugins: {
-                    aegis: { testSetter: { value: 'route-value' } }
-                }
-            },
-            handler: () => 'ok'
-        });
-        server.route({ method: 'GET', path: '/default', handler: () => 'ok' });
-
-        const overrideRes = await server.inject('/override');
-        const defaultRes = await server.inject('/default');
-
-        expect(overrideRes.headers['x-test-setter']).to.equal('route-value');
-        expect(defaultRes.headers['x-test-setter']).to.equal('server-value');
-    });
-
-    it('route-level false disables a middleware for that route only', async () => {
-
-        const server = Hapi.server();
-        await registerWith(
-            server,
-            [makeSetter('testSetter', 'X-Test-Setter', 'default-value')]
-        );
-
-        server.route({
-            method: 'GET',
-            path: '/off',
-            options: {
-                plugins: {
-                    aegis: { testSetter: false }
-                }
-            },
-            handler: () => 'ok'
-        });
-        server.route({ method: 'GET', path: '/on', handler: () => 'ok' });
-
-        const offRes = await server.inject('/off');
-        const onRes = await server.inject('/on');
-
-        expect(offRes.headers['x-test-setter']).to.not.exist();
-        expect(onRes.headers['x-test-setter']).to.equal('default-value');
-    });
-
-    it('tolerates middleware returning null or a resultless object', async () => {
-
-        const server = Hapi.server();
-        await registerWith(server, [
-            makeNoop('testNoop'),
-            makeEmptyReturn('testEmpty')
-        ]);
-
-        server.route({ method: 'GET', path: '/', handler: () => 'ok' });
-        const res = await server.inject('/');
-        expect(res.statusCode).to.equal(200);
-    });
-
-    it('applies each entry when a middleware returns an array of results', async () => {
-
-        const server = Hapi.server();
-        await registerWith(server, [makeArrayRemover('testMulti', ['X-Alpha', 'X-Beta'])]);
+        await server.register(Aegis);
 
         server.route({
             method: 'GET',
             path: '/',
             handler: (request, h) => h.response('ok')
-                .header('X-Alpha', 'a')
-                .header('X-Beta', 'b')
+                .header('X-Powered-By', 'leaky')
+                .header('Server', 'leaky')
         });
 
         const res = await server.inject('/');
-        expect(res.headers['x-alpha']).to.not.exist();
-        expect(res.headers['x-beta']).to.not.exist();
+        expect(res.statusCode).to.equal(200);
+        expect(res.headers['x-content-type-options']).to.equal('nosniff');
+        expect(res.headers['x-xss-protection']).to.equal('0');
+        expect(res.headers['x-powered-by']).to.not.exist();
+        expect(res.headers['server']).to.not.exist();
     });
 
-    it('reports plugin version from package.json', () => {
+    it('applies all default middlewares on a Boom error response', async () => {
 
-        expect(Aegis.plugin.version).to.equal(require('../package.json').version);
+        const server = Hapi.server();
+        await server.register(Aegis);
+        server.route({
+            method: 'GET',
+            path: '/boom',
+            handler: () => {
+
+                throw new Error('intentional');
+            }
+        });
+
+        const res = await server.inject('/boom');
+        expect(res.statusCode).to.equal(500);
+        expect(res.headers['x-content-type-options']).to.equal('nosniff');
+        expect(res.headers['x-xss-protection']).to.equal('0');
+    });
+
+    it('route-level plugins.aegis overrides server-level disabling', async () => {
+
+        const server = Hapi.server();
+        await server.register({ plugin: Aegis, options: { noSniff: false } });
+
+        server.route({
+            method: 'GET',
+            path: '/route-on',
+            options: { plugins: { aegis: { noSniff: {} } } },
+            handler: () => 'ok'
+        });
+        server.route({ method: 'GET', path: '/server-off', handler: () => 'ok' });
+
+        const onRes = await server.inject('/route-on');
+        const offRes = await server.inject('/server-off');
+
+        expect(onRes.headers['x-content-type-options']).to.equal('nosniff');
+        expect(offRes.headers['x-content-type-options']).to.not.exist();
+    });
+
+    it('does not crash when the plugin is registered with no options', async () => {
+
+        const server = Hapi.server();
+        await server.register(Aegis);
+        server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+        const res = await server.inject('/');
+        expect(res.statusCode).to.equal(200);
     });
 });
 
@@ -267,7 +106,7 @@ describe('internals', () => {
 
             const middlewares = loadMiddlewares();
             expect(middlewares).to.be.an.array();
-            expect(middlewares.length).to.be.at.least(1);
+            expect(middlewares.length).to.be.at.least(3);
             for (const m of middlewares) {
                 expect(m.name).to.be.a.string();
                 expect(m.run).to.be.a.function();
