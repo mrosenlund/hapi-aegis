@@ -263,9 +263,15 @@ describe('internals', () => {
 
     describe('loadMiddlewares()', () => {
 
-        it('returns an empty array when the middlewares directory is empty', () => {
+        it('returns an array of { name, run } entries for each .js file', () => {
 
-            expect(loadMiddlewares()).to.equal([]);
+            const middlewares = loadMiddlewares();
+            expect(middlewares).to.be.an.array();
+            expect(middlewares.length).to.be.at.least(1);
+            for (const m of middlewares) {
+                expect(m.name).to.be.a.string();
+                expect(m.run).to.be.a.function();
+            }
         });
 
         it('returns an empty array when the middlewares directory is missing', () => {
