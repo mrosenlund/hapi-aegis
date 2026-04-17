@@ -1,6 +1,6 @@
 {
   "name": "hapi-aegis",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "A Hapi.js plugin that sets security-related HTTP response headers.",
   "main": "lib/index.js",
   "scripts": {
