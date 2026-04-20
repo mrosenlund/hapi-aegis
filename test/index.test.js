@@ -206,6 +206,41 @@ describe('Custom options', () => {
     });
 });
 
+describe('Route-level overrides', () => {
+
+    it('applies server defaults on un-overridden routes and route overrides on overridden routes', async () => {
+
+        const server = Hapi.server();
+        await server.register(Aegis);
+
+        server.route({ method: 'GET', path: '/a', handler: () => 'ok' });
+        server.route({
+            method: 'GET',
+            path: '/b',
+            options: {
+                plugins: {
+                    aegis: {
+                        contentSecurityPolicy: false,
+                        frameguard: { action: 'deny' }
+                    }
+                }
+            },
+            handler: () => 'ok'
+        });
+
+        const a = await server.inject('/a');
+        const b = await server.inject('/b');
+
+        expect(a.headers['content-security-policy']).to.startWith("default-src 'self'");
+        expect(a.headers['x-frame-options']).to.equal('SAMEORIGIN');
+        expect(a.headers['x-content-type-options']).to.equal('nosniff');
+
+        expect(b.headers['content-security-policy']).to.not.exist();
+        expect(b.headers['x-frame-options']).to.equal('DENY');
+        expect(b.headers['x-content-type-options']).to.equal('nosniff');
+    });
+});
+
 describe('internals', () => {
 
     describe('loadMiddlewares()', () => {
