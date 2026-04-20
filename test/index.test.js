@@ -272,6 +272,38 @@ describe('Boom error responses', () => {
     });
 });
 
+describe('Empty options for a middleware resets to defaults', () => {
+
+    const makeServer = async (options) => {
+
+        const server = Hapi.server();
+        await server.register({ plugin: Aegis, options });
+        server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+        return server;
+    };
+
+    it('treats { hsts: {} } as defaults, not disabled', async () => {
+
+        const server = await makeServer({ hsts: {} });
+        const res = await server.inject('/');
+        expect(res.headers['strict-transport-security']).to.equal('max-age=15552000; includeSubDomains');
+    });
+
+    it('treats { frameguard: {} } as defaults, not disabled', async () => {
+
+        const server = await makeServer({ frameguard: {} });
+        const res = await server.inject('/');
+        expect(res.headers['x-frame-options']).to.equal('SAMEORIGIN');
+    });
+
+    it('treats { contentSecurityPolicy: {} } as defaults, not disabled', async () => {
+
+        const server = await makeServer({ contentSecurityPolicy: {} });
+        const res = await server.inject('/');
+        expect(res.headers['content-security-policy']).to.startWith("default-src 'self'");
+    });
+});
+
 describe('internals', () => {
 
     describe('loadMiddlewares()', () => {
