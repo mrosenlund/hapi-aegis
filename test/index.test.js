@@ -3,6 +3,7 @@
 const Fs = require('fs');
 const Path = require('path');
 
+const Boom = require('@hapi/boom');
 const Hapi = require('@hapi/hapi');
 const Lab = require('@hapi/lab');
 const { expect } = require('@hapi/code');
@@ -238,6 +239,36 @@ describe('Route-level overrides', () => {
         expect(b.headers['content-security-policy']).to.not.exist();
         expect(b.headers['x-frame-options']).to.equal('DENY');
         expect(b.headers['x-content-type-options']).to.equal('nosniff');
+    });
+});
+
+describe('Boom error responses', () => {
+
+    it('applies security headers to Boom.badRequest responses', async () => {
+
+        const server = Hapi.server();
+        await server.register(Aegis);
+
+        server.route({
+            method: 'GET',
+            path: '/bad',
+            handler: () => {
+
+                throw Boom.badRequest('bad input');
+            }
+        });
+
+        const res = await server.inject('/bad');
+
+        expect(res.statusCode).to.equal(400);
+        expect(res.headers['x-content-type-options']).to.equal('nosniff');
+        expect(res.headers['x-frame-options']).to.equal('SAMEORIGIN');
+        expect(res.headers['strict-transport-security']).to.equal('max-age=15552000; includeSubDomains');
+        expect(res.headers['content-security-policy']).to.startWith("default-src 'self'");
+        expect(res.headers['referrer-policy']).to.equal('no-referrer');
+        expect(res.headers['x-xss-protection']).to.equal('0');
+        expect(res.headers['x-powered-by']).to.not.exist();
+        expect(res.headers['server']).to.not.exist();
     });
 });
 
