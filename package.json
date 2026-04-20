@@ -31,6 +31,7 @@
     "@hapi/hapi": ">=21"
   },
   "devDependencies": {
+    "@hapi/boom": "^10.0.1",
     "@hapi/code": "^9.0.3",
     "@hapi/hapi": "^21.3.12",
     "@hapi/lab": "^25.3.2",
