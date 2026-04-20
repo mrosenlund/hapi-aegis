@@ -1,11 +1,19 @@
 {
   "name": "hapi-aegis",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A Hapi.js plugin that sets security-related HTTP response headers.",
   "main": "lib/index.js",
   "types": "index.d.ts",
+  "files": [
+    "lib/",
+    "index.d.ts",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "lab -c -t 95",
+    "coverage": "lab -c -t 95 -r console -r html -o stdout -o coverage/index.html",
     "lint": "eslint lib test",
     "typecheck": "tsc --noEmit --strict index.d.ts"
   },
