@@ -98,6 +98,57 @@ describe('hapi-aegis plugin shell', () => {
     });
 });
 
+describe('Default registration', () => {
+
+    const DEFAULT_CSP = [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "font-src 'self' https: data:",
+        "form-action 'self'",
+        "frame-ancestors 'self'",
+        "img-src 'self' data:",
+        "object-src 'none'",
+        "script-src 'self'",
+        "script-src-attr 'none'",
+        "style-src 'self' https: 'unsafe-inline'",
+        'upgrade-insecure-requests'
+    ].join('; ');
+
+    it('applies every default security header on a 200 response', async () => {
+
+        const server = Hapi.server();
+        await server.register(Aegis);
+
+        server.route({
+            method: 'GET',
+            path: '/',
+            handler: (request, h) => h.response('ok')
+                .header('X-Powered-By', 'leaky')
+                .header('Server', 'leaky')
+        });
+
+        const res = await server.inject('/');
+
+        expect(res.statusCode).to.equal(200);
+        expect(res.headers['content-security-policy']).to.equal(DEFAULT_CSP);
+        expect(res.headers['cross-origin-embedder-policy']).to.equal('require-corp');
+        expect(res.headers['cross-origin-opener-policy']).to.equal('same-origin');
+        expect(res.headers['cross-origin-resource-policy']).to.equal('same-origin');
+        expect(res.headers['x-dns-prefetch-control']).to.equal('off');
+        expect(res.headers['expect-ct']).to.equal('max-age=0');
+        expect(res.headers['x-frame-options']).to.equal('SAMEORIGIN');
+        expect(res.headers['strict-transport-security']).to.equal('max-age=15552000; includeSubDomains');
+        expect(res.headers['x-download-options']).to.equal('noopen');
+        expect(res.headers['x-content-type-options']).to.equal('nosniff');
+        expect(res.headers['origin-agent-cluster']).to.equal('?1');
+        expect(res.headers['x-permitted-cross-domain-policies']).to.equal('none');
+        expect(res.headers['referrer-policy']).to.equal('no-referrer');
+        expect(res.headers['x-xss-protection']).to.equal('0');
+        expect(res.headers['x-powered-by']).to.not.exist();
+        expect(res.headers['server']).to.not.exist();
+    });
+});
+
 describe('internals', () => {
 
     describe('loadMiddlewares()', () => {
