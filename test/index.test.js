@@ -149,6 +149,63 @@ describe('Default registration', () => {
     });
 });
 
+describe('Disabling individual middlewares', () => {
+
+    it('omits disabled headers and keeps all others at defaults', async () => {
+
+        const server = Hapi.server();
+        await server.register({ plugin: Aegis, options: { xssFilter: false, frameguard: false } });
+        server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+
+        const res = await server.inject('/');
+
+        expect(res.statusCode).to.equal(200);
+        expect(res.headers['x-xss-protection']).to.not.exist();
+        expect(res.headers['x-frame-options']).to.not.exist();
+
+        expect(res.headers['x-content-type-options']).to.equal('nosniff');
+        expect(res.headers['strict-transport-security']).to.equal('max-age=15552000; includeSubDomains');
+        expect(res.headers['referrer-policy']).to.equal('no-referrer');
+        expect(res.headers['cross-origin-opener-policy']).to.equal('same-origin');
+        expect(res.headers['cross-origin-resource-policy']).to.equal('same-origin');
+        expect(res.headers['cross-origin-embedder-policy']).to.equal('require-corp');
+        expect(res.headers['x-dns-prefetch-control']).to.equal('off');
+        expect(res.headers['expect-ct']).to.equal('max-age=0');
+        expect(res.headers['x-download-options']).to.equal('noopen');
+        expect(res.headers['origin-agent-cluster']).to.equal('?1');
+        expect(res.headers['x-permitted-cross-domain-policies']).to.equal('none');
+        expect(res.headers['content-security-policy']).to.startWith("default-src 'self'");
+    });
+});
+
+describe('Custom options', () => {
+
+    it('emits the user-supplied values in the response headers', async () => {
+
+        const server = Hapi.server();
+        await server.register({
+            plugin: Aegis,
+            options: {
+                hsts: { maxAge: 63072000, includeSubDomains: true, preload: true },
+                contentSecurityPolicy: { directives: { scriptSrc: ["'self'", "'unsafe-inline'"] } },
+                frameguard: { action: 'deny' }
+            }
+        });
+        server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+
+        const res = await server.inject('/');
+
+        expect(res.statusCode).to.equal(200);
+        expect(res.headers['strict-transport-security']).to.equal('max-age=63072000; includeSubDomains; preload');
+        expect(res.headers['x-frame-options']).to.equal('DENY');
+
+        const csp = res.headers['content-security-policy'];
+        expect(csp).to.contain("script-src 'self' 'unsafe-inline'");
+        expect(csp).to.contain("default-src 'self'");
+        expect(csp).to.not.contain("script-src 'self';");
+    });
+});
+
 describe('internals', () => {
 
     describe('loadMiddlewares()', () => {
