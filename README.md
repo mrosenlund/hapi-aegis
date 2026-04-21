@@ -339,6 +339,10 @@ Yes. The `Expect-CT` header is deprecated by browsers. The middleware is include
 5. Run `npm run lint`.
 6. Open a pull request. Use [conventional commits](https://www.conventionalcommits.org/) for commit messages (e.g. `feat(hsts): …`, `fix(core): …`).
 
+## Acknowledgements
+
+`hapi-aegis`'s option shapes, middleware scope, and sensible defaults are modeled after [Helmet](https://helmetjs.github.io/), the Express security-headers middleware. The implementation is independent — hapi's request lifecycle, Boom error handling, and route-level plugin configuration are all hapi-native — but the API similarity is intentional to make the plugin feel familiar to developers coming from Express.
+
 ## License
 
 MIT © 2026 Matt Rosenlund — see [LICENSE](./LICENSE).
