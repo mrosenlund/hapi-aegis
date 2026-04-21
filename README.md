@@ -308,6 +308,10 @@ await server.register({
 });
 ```
 
+## See Also
+
+`hapi-aegis` keeps CSP configuration static — policies are set at register time, not per request. If you need per-request nonces for `script-src` / `style-src` (to avoid `'unsafe-inline'` with inline scripts or styles), or a CSP that varies per request, use **[blankie](https://github.com/nlf/blankie)** instead. You can run both: set `contentSecurityPolicy: false` in `hapi-aegis` options and let blankie handle CSP while `hapi-aegis` handles the other headers.
+
 ## FAQ
 
 **Does this work with Boom error responses?**
