@@ -242,6 +242,43 @@ contentSecurityPolicy: {
 
 This switches the emitted header name to `Content-Security-Policy-Report-Only`.
 
+### Dynamic per-request directives
+
+Any directive value may be a function `(request) => string | string[]`, either as the whole value or as an item inside a mixed array. The function is invoked during `onPreResponse` with the current Hapi `request`, and its return is merged into the emitted policy. This enables per-request nonces, hashes, or any CSP variation without disabling the middleware.
+
+```js
+await server.register({
+    plugin: Aegis,
+    options: {
+        contentSecurityPolicy: {
+            directives: {
+                scriptSrc: ["'self'", (request) => `'nonce-${request.app.nonce}'`]
+            }
+        }
+    }
+});
+```
+
+Pair it with a small `onRequest` extension that stashes a fresh nonce on `request.app` and your templates will have a matching value to attach to inline scripts:
+
+```js
+const Crypto = require('crypto');
+
+server.ext('onRequest', (request, h) => {
+
+    request.app.nonce = Crypto.randomBytes(16).toString('base64');
+    return h.continue;
+});
+```
+
+Rules for the resolver:
+
+- A function may return `string` or `string[]`. Array returns are flattened into the surrounding directive list.
+- A function that returns `null` or `undefined` is skipped (useful for conditional values).
+- All other return types throw `hapi-aegis: contentSecurityPolicy directive "<name>" function returned invalid value; expected string or string[]`.
+- Resolved values flow through the normal validation path, so quote-keyword and unknown-directive warnings still fire on function outputs.
+- Resolution runs for every response, including Boom errors, so the header is consistent on 500s.
+
 ### Naming and edge cases
 
 - **camelCase → kebab-case.** Directive names are given in camelCase and converted automatically: `scriptSrcAttr` → `script-src-attr`, `upgradeInsecureRequests` → `upgrade-insecure-requests`.
@@ -330,7 +367,7 @@ await server.register({
 
 ## See Also
 
-`hapi-aegis` keeps CSP configuration static — policies are set at register time, not per request. If you need per-request nonces for `script-src` / `style-src` (to avoid `'unsafe-inline'` with inline scripts or styles), or a CSP that varies per request, use **[blankie](https://github.com/nlf/blankie)** instead. You can run both: set `contentSecurityPolicy: false` in `hapi-aegis` options and let blankie handle CSP while `hapi-aegis` handles the other headers.
+For per-request CSP variations (nonces, hashes, anything that depends on the request), use the [Dynamic per-request directives](#dynamic-per-request-directives) feature above — function-valued directives are resolved during `onPreResponse` with the Hapi `request`. If you'd prefer a dedicated plugin for that use case, **[blankie](https://github.com/nlf/blankie)** is an alternative; you can run it alongside `hapi-aegis` by setting `contentSecurityPolicy: false` in the `hapi-aegis` options and letting blankie handle CSP while `hapi-aegis` handles the other headers.
 
 ## FAQ
 
