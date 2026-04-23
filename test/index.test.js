@@ -46,6 +46,7 @@ describe('hapi-aegis plugin shell', () => {
         expect(res.statusCode).to.equal(200);
         expect(res.headers['x-content-type-options']).to.equal('nosniff');
         expect(res.headers['x-xss-protection']).to.equal('0');
+        expect(res.headers['permissions-policy']).to.exist();
         expect(res.headers['x-powered-by']).to.not.exist();
         expect(res.headers['server']).to.not.exist();
     });
@@ -145,6 +146,7 @@ describe('Default registration', () => {
         expect(res.headers['x-permitted-cross-domain-policies']).to.equal('none');
         expect(res.headers['referrer-policy']).to.equal('no-referrer');
         expect(res.headers['x-xss-protection']).to.equal('0');
+        expect(res.headers['permissions-policy']).to.equal('accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()');
         expect(res.headers['x-powered-by']).to.not.exist();
         expect(res.headers['server']).to.not.exist();
     });
@@ -175,6 +177,7 @@ describe('Disabling individual middlewares', () => {
         expect(res.headers['x-download-options']).to.equal('noopen');
         expect(res.headers['origin-agent-cluster']).to.equal('?1');
         expect(res.headers['x-permitted-cross-domain-policies']).to.equal('none');
+        expect(res.headers['permissions-policy']).to.exist();
         expect(res.headers['content-security-policy']).to.startWith("default-src 'self'");
     });
 });
