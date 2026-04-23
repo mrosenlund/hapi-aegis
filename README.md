@@ -59,6 +59,7 @@ await server.register({
 | `ieNoOpen` | `X-Download-Options` | `noopen` | none (boolean) |
 | `noSniff` | `X-Content-Type-Options` | `nosniff` | none (boolean) |
 | `originAgentCluster` | `Origin-Agent-Cluster` | `?1` | none (boolean) |
+| `permissionsPolicy` | `Permissions-Policy` | 8 sensor/device features denied | `features` |
 | `permittedCrossDomainPolicies` | `X-Permitted-Cross-Domain-Policies` | `none` | `permittedPolicies` |
 | `referrerPolicy` | `Referrer-Policy` | `no-referrer` | `policy` |
 | `xssFilter` | `X-XSS-Protection` | `0` | none (boolean) — see [FAQ](#faq) |
@@ -132,6 +133,25 @@ Sets `X-Content-Type-Options: nosniff`. No options.
 ### originAgentCluster
 
 Sets `Origin-Agent-Cluster: ?1`. No options.
+
+### permissionsPolicy
+
+Sets `Permissions-Policy` (formerly `Feature-Policy`) to control which browser features can be used on the page and in embedded iframes.
+
+- `features` *(object, optional)* — map of feature names (camelCase, converted to kebab-case in the header) to an allowlist array:
+    - `[]` — feature fully denied.
+    - `['*']` — feature allowed on all origins.
+    - `['self']` — feature allowed only on same origin.
+    - `['self', 'https://maps.example.com']` — feature allowed on same origin plus the listed origins.
+
+When `features` is not supplied, a conservative set of high-risk sensor/device features is denied:
+
+```
+accelerometer=(), camera=(), geolocation=(), gyroscope=(),
+magnetometer=(), microphone=(), payment=(), usb=()
+```
+
+Providing `features` fully replaces the default set — list only the features you want in the header. Unknown feature names emit a `console.warn` (the spec evolves) but are still included; allowlist values that are neither a keyword (`self`, `src`, `*`) nor an origin-like URL also warn.
 
 ### permittedCrossDomainPolicies
 
