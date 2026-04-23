@@ -683,4 +683,210 @@ describe('contentSecurityPolicy middleware', () => {
             expect(res.statusCode).to.equal(500);
         });
     });
+
+    describe('integration — generateNonces', () => {
+
+        const NONCE_PATTERN = /'nonce-([A-Za-z0-9+/=]+)'/;
+
+        it('appends an auto-generated nonce to script-src and style-src', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: { contentSecurityPolicy: { generateNonces: true } }
+            });
+            server.route({
+                method: 'GET',
+                path: '/',
+                handler: (request) => ({ nonce: request.plugins.aegis.nonce })
+            });
+
+            const res = await server.inject('/');
+            expect(res.statusCode).to.equal(200);
+
+            const header = res.headers['content-security-policy'];
+            const match = header.match(NONCE_PATTERN);
+            expect(match).to.exist();
+            const nonce = match[1];
+
+            expect(header).to.contain(`script-src 'self' 'nonce-${nonce}'`);
+            expect(header).to.contain(`style-src 'self' https: 'unsafe-inline' 'nonce-${nonce}'`);
+            expect(res.result).to.equal({ nonce });
+        });
+
+        it('generates a fresh nonce for each request', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: { contentSecurityPolicy: { generateNonces: true } }
+            });
+            server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+
+            const first = await server.inject('/');
+            const second = await server.inject('/');
+
+            const firstNonce = first.headers['content-security-policy'].match(NONCE_PATTERN)[1];
+            const secondNonce = second.headers['content-security-policy'].match(NONCE_PATTERN)[1];
+
+            expect(firstNonce).to.not.equal(secondNonce);
+        });
+
+        it('emits the nonce on Boom error responses', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: { contentSecurityPolicy: { generateNonces: true } }
+            });
+            server.route({
+                method: 'GET',
+                path: '/boom',
+                handler: () => {
+
+                    throw new Error('intentional');
+                }
+            });
+
+            const res = await server.inject('/boom');
+            expect(res.statusCode).to.equal(500);
+            expect(res.headers['content-security-policy']).to.match(NONCE_PATTERN);
+        });
+
+        it('creates the directives from scratch when useDefaults is false and no directives are supplied', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: {
+                    contentSecurityPolicy: {
+                        useDefaults: false,
+                        generateNonces: true
+                    }
+                }
+            });
+            server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+
+            const res = await server.inject('/');
+            const header = res.headers['content-security-policy'];
+            const nonce = header.match(NONCE_PATTERN)[1];
+
+            expect(header).to.equal(`script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'`);
+        });
+
+        it('emits the nonce under reportOnly', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: {
+                    contentSecurityPolicy: {
+                        reportOnly: true,
+                        generateNonces: true
+                    }
+                }
+            });
+            server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+
+            const res = await server.inject('/');
+            expect(res.headers['content-security-policy']).to.not.exist();
+            expect(res.headers['content-security-policy-report-only']).to.match(NONCE_PATTERN);
+        });
+
+        it('appends the nonce after function-valued entries resolve', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: {
+                    contentSecurityPolicy: {
+                        generateNonces: true,
+                        directives: {
+                            scriptSrc: ["'self'", (req) => `https://cdn.example/${req.headers['x-tenant']}`]
+                        }
+                    }
+                }
+            });
+            server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+
+            const res = await server.inject({ method: 'GET', url: '/', headers: { 'x-tenant': 'acme' } });
+            const header = res.headers['content-security-policy'];
+            const nonce = header.match(NONCE_PATTERN)[1];
+
+            expect(header).to.contain(`script-src 'self' https://cdn.example/acme 'nonce-${nonce}'`);
+        });
+
+        it('honors a route-level generateNonces: false override', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: { contentSecurityPolicy: { generateNonces: true } }
+            });
+            server.route({
+                method: 'GET',
+                path: '/public',
+                options: {
+                    plugins: {
+                        aegis: { contentSecurityPolicy: { generateNonces: false } }
+                    }
+                },
+                handler: (request) => ({ nonce: request.plugins.aegis && request.plugins.aegis.nonce })
+            });
+            server.route({
+                method: 'GET',
+                path: '/private',
+                handler: (request) => ({ nonce: request.plugins.aegis.nonce })
+            });
+
+            const publicRes = await server.inject('/public');
+            const privateRes = await server.inject('/private');
+
+            expect(publicRes.headers['content-security-policy']).to.not.match(NONCE_PATTERN);
+            expect(publicRes.result).to.equal({ nonce: undefined });
+
+            expect(privateRes.headers['content-security-policy']).to.match(NONCE_PATTERN);
+            expect(privateRes.result.nonce).to.be.a.string();
+        });
+
+        it('honors a route-level generateNonces: true when the server default is off', async () => {
+
+            const server = Hapi.server();
+            await server.register({ plugin: Aegis });
+            server.route({
+                method: 'GET',
+                path: '/nonced',
+                options: {
+                    plugins: {
+                        aegis: { contentSecurityPolicy: { generateNonces: true } }
+                    }
+                },
+                handler: (request) => ({ nonce: request.plugins.aegis.nonce })
+            });
+            server.route({ method: 'GET', path: '/plain', handler: () => 'ok' });
+
+            const noncedRes = await server.inject('/nonced');
+            const plainRes = await server.inject('/plain');
+
+            expect(noncedRes.headers['content-security-policy']).to.match(NONCE_PATTERN);
+            expect(noncedRes.result.nonce).to.be.a.string();
+
+            expect(plainRes.headers['content-security-policy']).to.not.match(NONCE_PATTERN);
+        });
+
+        it('does not set request.plugins.aegis when generateNonces is off', async () => {
+
+            const server = Hapi.server();
+            await server.register({ plugin: Aegis });
+            server.route({
+                method: 'GET',
+                path: '/',
+                handler: (request) => ({ aegis: request.plugins.aegis })
+            });
+
+            const res = await server.inject('/');
+            expect(res.headers['content-security-policy']).to.not.match(NONCE_PATTERN);
+            expect(res.result).to.equal({ aegis: undefined });
+        });
+    });
 });
