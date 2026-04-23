@@ -375,6 +375,116 @@ describe('contentSecurityPolicy middleware', () => {
         });
     });
 
+    describe('unit — resolveDirectives (function values)', () => {
+
+        const { resolveDirectives } = Csp;
+
+        it('passes static string and string[] values through unchanged', () => {
+
+            const input = { defaultSrc: ["'self'"], scriptSrc: "'self'" };
+            const out = resolveDirectives(input, {});
+            expect(out.defaultSrc).to.equal(["'self'"]);
+            expect(out.scriptSrc).to.equal("'self'");
+        });
+
+        it('invokes a function-valued directive with the request and uses its string return', () => {
+
+            const request = { app: { nonce: 'abc' } };
+            const out = resolveDirectives({
+                scriptSrc: (req) => `'nonce-${req.app.nonce}'`
+            }, request);
+            expect(out.scriptSrc).to.equal("'nonce-abc'");
+        });
+
+        it('uses a function return of string[] as the directive array', () => {
+
+            const out = resolveDirectives({
+                scriptSrc: () => ["'self'", 'cdn.example.com']
+            }, {});
+            expect(out.scriptSrc).to.equal(["'self'", 'cdn.example.com']);
+        });
+
+        it('flattens functions inside a mixed array', () => {
+
+            const request = { app: { nonce: 'xyz' } };
+            const out = resolveDirectives({
+                scriptSrc: ["'self'", (req) => `'nonce-${req.app.nonce}'`, () => ['https://cdn.example.com', 'https://cdn2.example.com']]
+            }, request);
+            expect(out.scriptSrc).to.equal(["'self'", "'nonce-xyz'", 'https://cdn.example.com', 'https://cdn2.example.com']);
+        });
+
+        it('passes the exact request object to functions', () => {
+
+            const request = { app: {} };
+            let captured;
+            resolveDirectives({ scriptSrc: (req) => {
+
+                captured = req;
+                return "'self'";
+            } }, request);
+            expect(captured).to.shallow.equal(request);
+        });
+
+        it('drops array items whose function returns null or undefined', () => {
+
+            const out = resolveDirectives({
+                scriptSrc: ["'self'", () => undefined, () => null, 'cdn.example.com']
+            }, {});
+            expect(out.scriptSrc).to.equal(["'self'", 'cdn.example.com']);
+        });
+
+        it('drops array items that are bare null or undefined', () => {
+
+            const out = resolveDirectives({
+                scriptSrc: ["'self'", null, undefined, 'cdn.example.com']
+            }, {});
+            expect(out.scriptSrc).to.equal(["'self'", 'cdn.example.com']);
+        });
+
+        it('preserves a top-level function return of undefined so the middleware skips the directive', () => {
+
+            const out = resolveDirectives({
+                scriptSrc: () => undefined
+            }, {});
+            expect(out.scriptSrc).to.be.undefined();
+        });
+
+        it('passes through explicit null / undefined directive values', () => {
+
+            const out = resolveDirectives({ scriptSrc: null, styleSrc: undefined }, {});
+            expect(out.scriptSrc).to.be.null();
+            expect(out.styleSrc).to.be.undefined();
+        });
+
+        it('throws a descriptive error when a top-level function returns a non-string, non-array value', () => {
+
+            expect(() => resolveDirectives({ scriptSrc: () => 42 }, {})).to.throw(
+                'hapi-aegis: contentSecurityPolicy directive "script-src" function returned invalid value; expected string or string[]'
+            );
+        });
+
+        it('throws when a function returns an array containing non-strings', () => {
+
+            expect(() => resolveDirectives({ scriptSrc: () => ['ok', 42] }, {})).to.throw(
+                /hapi-aegis: contentSecurityPolicy directive "script-src" function returned invalid value/
+            );
+        });
+
+        it('throws when an array-embedded function returns a non-string, non-array value', () => {
+
+            expect(() => resolveDirectives({ scriptSrc: ["'self'", () => ({ bad: true })] }, {})).to.throw(
+                /hapi-aegis: contentSecurityPolicy directive "script-src" function returned invalid value/
+            );
+        });
+
+        it('names the kebab directive in the error, not the camelCase input', () => {
+
+            expect(() => resolveDirectives({ scriptSrcAttr: () => 42 }, {})).to.throw(
+                /"script-src-attr"/
+            );
+        });
+    });
+
     describe('integration', () => {
 
         it('sets the default Content-Security-Policy header on 200 responses', async () => {
@@ -448,6 +558,129 @@ describe('contentSecurityPolicy middleware', () => {
 
             expect(offRes.headers['content-security-policy']).to.not.exist();
             expect(onRes.headers['content-security-policy']).to.equal(DEFAULT_VALUE);
+        });
+
+        it('resolves a function-valued directive using request.app at response time', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: {
+                    contentSecurityPolicy: {
+                        directives: {
+                            scriptSrc: ["'self'", (req) => `'nonce-${req.app.nonce}'`]
+                        }
+                    }
+                }
+            });
+            server.ext('onRequest', (request, h) => {
+
+                request.app.nonce = 'req-nonce';
+                return h.continue;
+            });
+            server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+
+            const res = await server.inject('/');
+            expect(res.statusCode).to.equal(200);
+            expect(res.headers['content-security-policy']).to.contain("script-src 'self' 'nonce-req-nonce'");
+        });
+
+        it('resolves function directives on Boom error responses too', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: {
+                    contentSecurityPolicy: {
+                        directives: {
+                            scriptSrc: ["'self'", (req) => `'nonce-${req.app.nonce}'`]
+                        }
+                    }
+                }
+            });
+            server.ext('onRequest', (request, h) => {
+
+                request.app.nonce = 'boom-nonce';
+                return h.continue;
+            });
+            server.route({
+                method: 'GET',
+                path: '/boom',
+                handler: () => {
+
+                    throw new Error('intentional');
+                }
+            });
+
+            const res = await server.inject('/boom');
+            expect(res.statusCode).to.equal(500);
+            expect(res.headers['content-security-policy']).to.contain("script-src 'self' 'nonce-boom-nonce'");
+        });
+
+        it('resolves functions inside reportOnly mode', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: {
+                    contentSecurityPolicy: {
+                        reportOnly: true,
+                        directives: {
+                            scriptSrc: [() => "'nonce-abc'"]
+                        }
+                    }
+                }
+            });
+            server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+
+            const res = await server.inject('/');
+            expect(res.headers['content-security-policy-report-only']).to.contain("script-src 'nonce-abc'");
+            expect(res.headers['content-security-policy']).to.not.exist();
+        });
+
+        it('applies the unquoted-keyword warning to resolved function values', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: {
+                    contentSecurityPolicy: {
+                        useDefaults: false,
+                        directives: { scriptSrc: [() => 'self'] }
+                    }
+                }
+            });
+            server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+
+            const warnings = [];
+            const original = console.warn;
+            console.warn = (msg) => warnings.push(msg);
+            try {
+                const res = await server.inject('/');
+                expect(res.headers['content-security-policy']).to.equal('script-src self');
+            }
+            finally {
+                console.warn = original;
+            }
+
+            expect(warnings.some((w) => w.includes('"self"') && w.includes('script-src'))).to.be.true();
+        });
+
+        it('surfaces function-return errors as 500s', async () => {
+
+            const server = Hapi.server();
+            await server.register({
+                plugin: Aegis,
+                options: {
+                    contentSecurityPolicy: {
+                        directives: { scriptSrc: () => 42 }
+                    }
+                }
+            });
+            server.route({ method: 'GET', path: '/', handler: () => 'ok' });
+
+            const res = await server.inject('/');
+            expect(res.statusCode).to.equal(500);
         });
     });
 });
