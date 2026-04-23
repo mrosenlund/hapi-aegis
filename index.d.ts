@@ -8,6 +8,11 @@ export interface ContentSecurityPolicyOptions {
     directives?: Record<string, CspDirectiveSource | CspDirectiveSource[]>;
     useDefaults?: boolean;
     reportOnly?: boolean;
+    generateNonces?: boolean;
+}
+
+export interface AegisRequestState {
+    nonce?: string;
 }
 
 export interface HstsOptions {
@@ -88,5 +93,9 @@ export const plugin: Hapi.Plugin<AegisOptions>;
 declare module '@hapi/hapi' {
     interface PluginSpecificConfiguration {
         aegis?: Partial<AegisOptions>;
+    }
+
+    interface PluginsStates {
+        aegis?: AegisRequestState;
     }
 }
