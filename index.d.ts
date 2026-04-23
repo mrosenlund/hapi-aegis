@@ -52,6 +52,10 @@ export interface ExpectCtOptions {
     reportUri?: string;
 }
 
+export interface PermissionsPolicyOptions {
+    features?: Record<string, string[]>;
+}
+
 export interface PermittedCrossDomainPoliciesOptions {
     permittedPolicies?: 'none' | 'master-only' | 'by-content-type' | 'all';
 }
@@ -69,6 +73,7 @@ export interface AegisOptions {
     ieNoOpen?: boolean;
     noSniff?: boolean;
     originAgentCluster?: boolean;
+    permissionsPolicy?: PermissionsPolicyOptions | false;
     permittedCrossDomainPolicies?: PermittedCrossDomainPoliciesOptions | false;
     referrerPolicy?: ReferrerPolicyOptions | false;
     xssFilter?: boolean;
