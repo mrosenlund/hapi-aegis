@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `contentSecurityPolicy` directives accept function values `(request) => string | string[]`, either as the whole directive value or as items inside a mixed array. Functions are invoked during `onPreResponse` with the Hapi `request`, enabling per-request nonces, hashes, and other dynamic CSP values. Works on both normal and Boom error responses. (#7)
+- `contentSecurityPolicy` now supports `generateNonces: true`. When enabled, `hapi-aegis` generates a fresh base64 nonce per request, exposes it on `request.plugins.aegis.nonce` for handlers and templates, and automatically appends `'nonce-<value>'` to `script-src` and `style-src`. Works on Boom responses and can be toggled per route via `plugins.aegis.contentSecurityPolicy.generateNonces`. (#2)
 
 ## [1.1.0] - 2026-04-22
 
