@@ -279,6 +279,36 @@ Rules for the resolver:
 - Resolved values flow through the normal validation path, so quote-keyword and unknown-directive warnings still fire on function outputs.
 - Resolution runs for every response, including Boom errors, so the header is consistent on 500s.
 
+### Automatic nonce generation
+
+Set `generateNonces: true` to have `hapi-aegis` mint a fresh base64 nonce per request and append `'nonce-<value>'` to both `script-src` and `style-src` automatically. The nonce is exposed on `request.plugins.aegis.nonce` so handlers and templates can attach the matching `nonce="..."` attribute to inline `<script>` / `<style>` tags.
+
+```js
+await server.register({
+    plugin: Aegis,
+    options: {
+        contentSecurityPolicy: { generateNonces: true }
+    }
+});
+
+server.route({
+    method: 'GET',
+    path: '/',
+    handler: (request) => `
+        <!doctype html>
+        <script nonce="${request.plugins.aegis.nonce}">/* inline init */</script>
+    `
+});
+```
+
+Notes:
+
+- The nonce is generated in an `onPreAuth` extension, so it is available to auth strategies, validators, and route handlers.
+- It is injected *after* any user-supplied directive values resolve, so user entries (including function-valued ones) are preserved.
+- With `useDefaults: false` and no user-supplied `scriptSrc` / `styleSrc`, the middleware emits those directives with only the nonce.
+- The switch can be toggled per route via `options.plugins.aegis.contentSecurityPolicy.generateNonces` — handy for static-asset or API-only routes that don't need a nonce.
+- Prefer this to the manual `onRequest` + function-valued pattern above unless you need a custom nonce shape or a different injection point.
+
 ### Naming and edge cases
 
 - **camelCase → kebab-case.** Directive names are given in camelCase and converted automatically: `scriptSrcAttr` → `script-src-attr`, `upgradeInsecureRequests` → `upgrade-insecure-requests`.
