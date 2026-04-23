@@ -1,7 +1,11 @@
 import * as Hapi from '@hapi/hapi';
 
+export type CspDirectiveSource =
+    | string
+    | ((request: Hapi.Request) => string | string[]);
+
 export interface ContentSecurityPolicyOptions {
-    directives?: Record<string, string | string[]>;
+    directives?: Record<string, CspDirectiveSource | CspDirectiveSource[]>;
     useDefaults?: boolean;
     reportOnly?: boolean;
 }
